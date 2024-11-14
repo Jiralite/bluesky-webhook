@@ -1,0 +1,15 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "serebii-webhook"
+main = "source/index.ts"
+compatibility_date = "2024-11-12"
+
+[triggers]
+crons = ["0 * * * *"]
+
+[observability]
+enabled = true
+
+[[d1_databases]]
+binding = "database"
+database_name = "serebii-webhook"
+database_id = "207a8b9e-b0e6-4e1e-87ce-74fe308fda05"
