@@ -13,3 +13,13 @@ enabled = true
 binding = "database"
 database_name = "serebii-webhook"
 database_id = "207a8b9e-b0e6-4e1e-87ce-74fe308fda05"
+
+[[queues.producers]]
+queue = "serebii-webhook"
+binding = "queue"
+
+[[queues.consumers]]
+queue = "serebii-webhook"
+max_batch_size = 1000
+max_concurrency = 1
+retry_delay = 5

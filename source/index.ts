@@ -1,8 +1,20 @@
 const SNOWFLAKE_REGULAR_EXPRESSION = /^\d{17,19}$/;
 const SEREBII_DID_ENCODED = encodeURIComponent("did:plc:fhf5k5lbggppbc26y5ir2cli");
 
+interface WebhooksData {
+	id: string;
+	token: string;
+}
+
+interface QueuePayload {
+	id: string;
+	token: string;
+	body: unknown;
+}
+
 interface Env {
 	database: D1Database;
+	queue: Queue<QueuePayload>;
 }
 
 interface Author {
@@ -169,9 +181,7 @@ export default {
 			.bind(feed[0]!.post.uri)
 			.run();
 
-		const webhooks = await env.database
-			.prepare("SELECT * FROM webhooks")
-			.all<{ id: string; token: string }>();
+		const webhooks = await env.database.prepare("SELECT * FROM webhooks").all<WebhooksData>();
 
 		if (webhooks.results.length === 0) {
 			console.log("No webhooks.");
@@ -193,100 +203,75 @@ export default {
 				}
 			}
 
-			// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: This is fine.
-			const webhookPromises = webhooks.results.map(({ id, token }) => {
-				let description = record.text;
+			await env.queue.sendBatch(
+				// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: This is fine.
+				webhooks.results.map(({ id, token }) => {
+					let description = record.text;
 
-				if (record.facets) {
-					const replacements: { startIndex: number; endIndex: number; hyperlink: string }[] = [];
+					if (record.facets) {
+						const replacements: { startIndex: number; endIndex: number; hyperlink: string }[] = [];
 
-					for (const { features, index } of record.facets) {
-						if (features[0].$type !== "app.bsky.richtext.facet#link") {
-							continue;
+						for (const { features, index } of record.facets) {
+							if (features[0].$type !== "app.bsky.richtext.facet#link") {
+								continue;
+							}
+
+							const { startIndex, endIndex } = getCharacterIndexesFromByteOffsets(
+								record.text,
+								index,
+							);
+
+							if (startIndex !== -1 && endIndex !== -1) {
+								const hyperlink = `[${record.text.slice(startIndex, endIndex)}](${features[0].uri})`;
+								replacements.push({ startIndex, endIndex, hyperlink });
+							} else {
+								console.error("Could not determine character indexes from byte offsets.");
+							}
 						}
 
-						const { startIndex, endIndex } = getCharacterIndexesFromByteOffsets(record.text, index);
-
-						if (startIndex !== -1 && endIndex !== -1) {
-							const hyperlink = `[${record.text.slice(startIndex, endIndex)}](${features[0].uri})`;
-							replacements.push({ startIndex, endIndex, hyperlink });
-						} else {
-							console.error("Could not determine character indexes from byte offsets.");
+						for (const { startIndex, endIndex, hyperlink } of replacements.sort(
+							(a, b) => b.startIndex - a.startIndex,
+						)) {
+							description = `${description.slice(0, startIndex)}${hyperlink}${description.slice(endIndex)}`;
 						}
 					}
 
-					for (const { startIndex, endIndex, hyperlink } of replacements.sort(
-						(a, b) => b.startIndex - a.startIndex,
-					)) {
-						description = `${description.slice(0, startIndex)}${hyperlink}${description.slice(endIndex)}`;
+					const url = `https://bsky.app/profile/${handle}/post/${uri.slice(uri.lastIndexOf("/") + 1)}`;
+
+					const initialEmbed: DiscordEmbed = {
+						title: author.displayName ?? handle,
+						description,
+						url,
+						timestamp: record.createdAt,
+						color: 0x67bd3f,
+						footer: { text: handle },
+					};
+
+					const firstURL = embedImages.shift();
+
+					if (firstURL) {
+						initialEmbed.image = { url: firstURL };
 					}
-				}
 
-				const url = `https://bsky.app/profile/${handle}/post/${uri.slice(uri.lastIndexOf("/") + 1)}`;
+					const embeds: DiscordEmbed[] = [initialEmbed];
 
-				const initialEmbed: DiscordEmbed = {
-					title: author.displayName ?? handle,
-					description,
-					url,
-					timestamp: record.createdAt,
-					color: 0x67bd3f,
-					footer: { text: handle },
-				};
+					for (const embedImage of embedImages) {
+						embeds.push({ url, image: { url: embedImage } });
+					}
 
-				const firstURL = embedImages.shift();
-
-				if (firstURL) {
-					initialEmbed.image = { url: firstURL };
-				}
-
-				const embeds: DiscordEmbed[] = [initialEmbed];
-
-				for (const embedImage of embedImages) {
-					embeds.push({ url, image: { url: embedImage } });
-				}
-
-				return {
-					id,
-					token,
-					request: fetch(`https://discord.com/api/webhooks/${id}/${token}`, {
-						headers: {
-							"Content-Type": "application/json",
+					return {
+						body: {
+							id,
+							token,
+							body: {
+								username: "Serebii",
+								avatar_url: author.avatar,
+								embeds,
+							},
 						},
-						method: "POST",
-						body: JSON.stringify({
-							username: "Serebii",
-							avatar_url: author.avatar,
-							embeds,
-						}),
-					}),
-				};
-			});
-
-			const settled = await Promise.allSettled(webhookPromises.map(({ request }) => request));
-
-			for (let index = 0; index < settled.length; index++) {
-				const result = settled[index]!;
-				const { id, token } = webhookPromises[index]!;
-
-				if (result.status === "fulfilled" && result.value.status === 404) {
-					// Webhook no longer exists. Remove it.
-					await env.database
-						.prepare("delete from webhooks where id = ? and token = ?")
-						.bind(id, token)
-						.run();
-
-					webhooks.results = webhooks.results.filter((webhook) => webhook.id !== id);
-				} else if (result.status === "rejected") {
-					console.error(`Failed to execute webhook ${id}.`, result.reason);
-				}
-			}
-
-			if (webhooks.results.length === 0) {
-				break;
-			}
-
-			// Wait 5 second to avoid rate limits.
-			await new Promise((resolve) => setTimeout(resolve, 5000));
+					};
+				}),
+			);
 		}
 	},
 	async fetch(request, env) {
@@ -294,7 +279,7 @@ export default {
 			return new Response("Method not allowed.", { status: 405 });
 		}
 
-		let body: { id?: string; token?: string };
+		let body: Partial<WebhooksData>;
 
 		try {
 			body = await request.json();
@@ -326,5 +311,64 @@ export default {
 		return new Response(JSON.stringify({ id, token, message: "Registered!" }), {
 			headers: { "Content-Type": "application/json" },
 		});
+	},
+	async queue(batch, env) {
+		// Get the current webhooks to check just before sending.
+		const webhooks = (await env.database.prepare("SELECT * FROM webhooks").all<WebhooksData>())
+			.results;
+
+		// Filter out webhooks that are not in the database.
+		let messages = batch.messages.filter((message) => {
+			const { id, token } = message.body as QueuePayload;
+			return webhooks.some((webhook) => webhook.id === id && webhook.token === token);
+		});
+
+		// Iterate over the messages.
+		const webhookExecuteData = messages.map((message) => {
+			const { id, token, body } = message.body as QueuePayload;
+
+			return {
+				message,
+				request: fetch(`https://discord.com/api/webhooks/${id}/${token}`, {
+					headers: {
+						"Content-Type": "application/json",
+					},
+					method: "POST",
+					body: JSON.stringify(body),
+				}),
+			};
+		});
+
+		const settled = await Promise.allSettled(webhookExecuteData.map(({ request }) => request));
+
+		for (let index = 0; index < settled.length; index++) {
+			const result = settled[index]!;
+			const { message } = webhookExecuteData[index]!;
+			const { id, token } = message.body as QueuePayload;
+
+			if (result.status === "fulfilled") {
+				if (result.value.status === 429) {
+					// Rate limit. Retry this.
+					message.retry();
+					continue;
+				}
+
+				if (result.value.status === 404) {
+					// Webhook no longer exists. Remove it.
+					await env.database
+						.prepare("delete from webhooks where id = ? and token = ?")
+						.bind(id, token)
+						.run();
+
+					// Filter the array of messages to remove the webhook.
+					messages = messages.filter((message) => {
+						const { id: webhookId, token: webhookToken } = message.body as QueuePayload;
+						return webhookId !== id && webhookToken !== token;
+					});
+				}
+			} else if (result.status === "rejected") {
+				console.error(`Failed to execute webhook ${id}.`, result.reason);
+			}
+		}
 	},
 } satisfies ExportedHandler<Env>;
