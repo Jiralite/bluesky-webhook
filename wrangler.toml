@@ -20,6 +20,6 @@ binding = "queue"
 
 [[queues.consumers]]
 queue = "serebii-webhook"
-max_batch_size = 1000
+max_batch_size = 100
 max_concurrency = 1
 retry_delay = 5
