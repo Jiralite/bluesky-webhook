@@ -191,7 +191,7 @@ export default {
 		for (const { post } of feed.reverse()) {
 			const { uri, author, record, embed } = post;
 			const { handle } = author;
-			let embedImages: string[];
+			let embedImages: string[] = [];
 
 			if (embed) {
 				if ("images" in embed) {
