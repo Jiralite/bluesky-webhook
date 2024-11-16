@@ -312,62 +312,83 @@ export default {
 			headers: { "Content-Type": "application/json" },
 		});
 	},
+	// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: This is fine.
 	async queue(batch, env) {
 		// Get the current webhooks to check just before sending.
-		const webhooks = (await env.database.prepare("SELECT * FROM webhooks").all<WebhooksData>())
+		const webhooks = (await env.database.prepare("select * from webhooks").all<WebhooksData>())
 			.results;
 
 		// Filter out webhooks that are not in the database.
 		let messages = batch.messages.filter((message) => {
 			const { id, token } = message.body as QueuePayload;
 			return webhooks.some((webhook) => webhook.id === id && webhook.token === token);
-		});
+		}) as Message<QueuePayload>[];
 
-		// Iterate over the messages.
-		const webhookExecuteData = messages.map((message) => {
-			const { id, token, body } = message.body as QueuePayload;
+		// Order by timestamps.
+		const uniqueDates = [
+			...new Set<string>(
+				messages.map(
+					(message) =>
+						// @ts-expect-error Unknown.
+						message.body.body.embeds[0].timestamp,
+				),
+			),
+		].sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
 
-			return {
-				message,
-				request: fetch(`https://discord.com/api/webhooks/${id}/${token}`, {
-					headers: {
-						"Content-Type": "application/json",
-					},
-					method: "POST",
-					body: JSON.stringify(body),
-				}),
-			};
-		});
+		// Iterate over the dates.
+		for (const uniqueDate of uniqueDates) {
+			// Filter the messages to only include the current date.
+			const filteredMessages = messages.filter(
+				(message) =>
+					// @ts-expect-error Unknown.
+					message.body.body.embeds[0].timestamp === uniqueDate,
+			);
 
-		const settled = await Promise.allSettled(webhookExecuteData.map(({ request }) => request));
+			const webhookExecuteData = filteredMessages.map((message) => {
+				const { id, token, body } = message.body;
 
-		for (let index = 0; index < settled.length; index++) {
-			const result = settled[index]!;
-			const { message } = webhookExecuteData[index]!;
-			const { id, token } = message.body as QueuePayload;
+				return {
+					message,
+					request: fetch(`https://discord.com/api/webhooks/${id}/${token}`, {
+						headers: {
+							"Content-Type": "application/json",
+						},
+						method: "POST",
+						body: JSON.stringify(body),
+					}),
+				};
+			});
 
-			if (result.status === "fulfilled") {
-				if (result.value.status === 429) {
-					// Rate limit. Retry this.
-					message.retry();
-					continue;
+			const settled = await Promise.allSettled(webhookExecuteData.map(({ request }) => request));
+
+			for (let index = 0; index < settled.length; index++) {
+				const result = settled[index]!;
+				const { message } = webhookExecuteData[index]!;
+				const { id, token } = message.body;
+
+				if (result.status === "fulfilled") {
+					if (result.value.status === 429) {
+						// Rate limit. Retry this.
+						message.retry();
+						continue;
+					}
+
+					if (result.value.status === 404) {
+						// Webhook no longer exists. Remove it.
+						await env.database
+							.prepare("delete from webhooks where id = ? and token = ?")
+							.bind(id, token)
+							.run();
+
+						// Filter the array of messages to remove the webhook.
+						messages = messages.filter((message) => {
+							const { id: webhookId, token: webhookToken } = message.body;
+							return webhookId !== id && webhookToken !== token;
+						});
+					}
+				} else if (result.status === "rejected") {
+					console.error(`Failed to execute webhook ${id}.`, result.reason);
 				}
-
-				if (result.value.status === 404) {
-					// Webhook no longer exists. Remove it.
-					await env.database
-						.prepare("delete from webhooks where id = ? and token = ?")
-						.bind(id, token)
-						.run();
-
-					// Filter the array of messages to remove the webhook.
-					messages = messages.filter((message) => {
-						const { id: webhookId, token: webhookToken } = message.body as QueuePayload;
-						return webhookId !== id && webhookToken !== token;
-					});
-				}
-			} else if (result.status === "rejected") {
-				console.error(`Failed to execute webhook ${id}.`, result.reason);
 			}
 		}
 	},
