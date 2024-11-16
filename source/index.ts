@@ -335,8 +335,12 @@ export default {
 			),
 		].sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
 
+		let index = 0;
+
 		// Iterate over the dates.
 		for (const uniqueDate of uniqueDates) {
+			index++;
+
 			// Filter the messages to only include the current date.
 			const filteredMessages = messages.filter(
 				(message) =>
@@ -389,6 +393,10 @@ export default {
 				} else if (result.status === "rejected") {
 					console.error(`Failed to execute webhook ${id}.`, result.reason);
 				}
+			}
+
+			if (index % 5 === 0) {
+				await new Promise((resolve) => setTimeout(resolve, 5000));
 			}
 		}
 	},
