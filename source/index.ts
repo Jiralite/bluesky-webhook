@@ -273,6 +273,10 @@ export default {
 		}
 	},
 	async fetch(request, env) {
+		if (request.method === "GET") {
+			return Response.redirect("https://github.com/Jiralite/serebii-webhook", 301);
+		}
+
 		if (request.method !== "POST") {
 			return new Response("Method not allowed.", { status: 405 });
 		}
