@@ -174,6 +174,8 @@ export default {
 			return;
 		}
 
+		console.log({ lastPostURI, posts: feed.length });
+
 		await env.database
 			.prepare("insert or replace into general (id, post_uri) values (1, ?)")
 			.bind(feed[0]!.post.uri)
