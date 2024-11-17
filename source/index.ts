@@ -143,9 +143,7 @@ function getCharacterIndexesFromByteOffsets(
 
 export default {
 	// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: This is fine.
-	async scheduled(controller, env) {
-		console.log(new Date(controller.scheduledTime));
-
+	async scheduled(_, env) {
 		const request = await fetch(
 			`https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor=${SEREBII_DID_ENCODED}&limit=100&filter=posts_no_replies`,
 			{
