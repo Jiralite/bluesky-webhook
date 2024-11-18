@@ -162,23 +162,27 @@ export default {
 
 		const json = (await request.json()) as AuthorFeedResponse;
 
-		const lastPostURI = (
-			await env.database.prepare("select post_uri from general").first<{ post_uri: string }>()
-		)?.post_uri;
+		const lastCreatedAt = (
+			await env.database.prepare("select created_at from general").first<{ created_at: string }>()
+		)?.created_at;
 
-		const lastPostIndex = json.feed.findIndex((feed) => feed.post.uri === lastPostURI);
-		const feed = json.feed.slice(0, lastPostIndex === -1 ? json.feed.length : lastPostIndex);
+		const feed = lastCreatedAt
+			? json.feed.filter(
+					(feed) =>
+						new Date(feed.post.record.createdAt).getTime() > new Date(lastCreatedAt).getTime(),
+				)
+			: json.feed;
 
 		if (feed.length === 0) {
 			console.log("No new posts.");
 			return;
 		}
 
-		console.log({ lastPostURI, posts: feed.length });
+		console.log({ lastCreatedAt, posts: feed.length });
 
 		await env.database
-			.prepare("insert or replace into general (id, post_uri) values (1, ?)")
-			.bind(feed[0]!.post.uri)
+			.prepare("insert or replace into general (id, created_at) values (1, ?)")
+			.bind(feed[0]!.post.record.createdAt)
 			.run();
 
 		const webhooks = await env.database.prepare("SELECT * FROM webhooks").all<WebhooksData>();
