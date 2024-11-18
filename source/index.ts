@@ -343,6 +343,7 @@ export default {
 			),
 		].sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
 
+		console.log({ uniqueDates });
 		let index = 0;
 
 		// Iterate over the dates.
