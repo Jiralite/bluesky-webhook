@@ -33,6 +33,7 @@ jetstream.on(EventType.Commit, async (event) => {
 
 		if (webhooks.length === 0) {
 			// No webhooks are listening to this DID.
+			await updateOptions();
 			return;
 		}
 
