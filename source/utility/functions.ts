@@ -31,3 +31,23 @@ export function getCharacterIndexesFromByteOffsets(
 export function formatImageURL(did: string, id: string) {
 	return `https://cdn.bsky.app/img/feed_thumbnail/plain/${did}/${id}`;
 }
+
+interface Profile {
+	handle: string;
+	displayName?: string;
+	avatar?: string;
+}
+
+export async function fetchProfile(did: string) {
+	const response = await fetch(
+		`https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile?actor=${did}`,
+		{ method: "GET" },
+	);
+
+	if (!response.ok) {
+		throw await response.json();
+	}
+
+	const json = (await response.json()) as Profile;
+	return json;
+}

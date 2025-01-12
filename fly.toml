@@ -1,5 +1,10 @@
 app = 'bluesky-webhook'
 primary_region = 'iad'
 
+[http_service]
+  auto_stop_machines = "off"
+  force_https = true
+  internal_port = 3_000
+
 [[vm]]
   size = 'shared-cpu-1x'
