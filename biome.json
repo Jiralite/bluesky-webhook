@@ -12,6 +12,7 @@
 		"rules": {
 			"all": true,
 			"correctness": {
+				"noNodejsModules": "off",
 				"noUndeclaredVariables": "off"
 			},
 			"complexity": {

@@ -12,14 +12,13 @@
 		"strict": true,
 		"module": "NodeNext",
 		"moduleResolution": "NodeNext",
-		"resolveJsonModule": true,
 		"verbatimModuleSyntax": true,
-		"types": ["@cloudflare/workers-types/2023-07-01"],
 		"newLine": "lf",
-		"noEmit": true,
+		"outDir": "distribution",
 		"esModuleInterop": true,
 		"forceConsistentCasingInFileNames": true,
 		"lib": ["ESNext"],
-		"target": "ESNext"
+		"target": "ESNext",
+		"skipLibCheck": true
 	}
 }
