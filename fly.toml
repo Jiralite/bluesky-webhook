@@ -1,0 +1,5 @@
+app = 'bluesky-webhook'
+primary_region = 'iad'
+
+[[vm]]
+  size = 'shared-cpu-1x'

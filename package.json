@@ -1,18 +1,29 @@
 {
-	"name": "serebii-webhook",
+	"name": "bluesky-webhook",
 	"type": "module",
 	"private": true,
 	"scripts": {
+		"build": "tsc",
+		"test": "tsc --noEmit",
 		"lint": "biome check",
 		"format": "biome check --write",
-		"dev": "wrangler dev --test-scheduled",
-		"deploy": "wrangler deploy",
+		"dev": "tsx --env-file .env source/index.ts",
+		"start": "node distribution/index.js",
 		"update": "pnpm update --interactive --latest"
 	},
+	"dependencies": {
+		"@discordjs/core": "^2.0.1",
+		"@discordjs/rest": "^2.4.2",
+		"@skyware/jetstream": "^0.2.2",
+		"knex": "^3.1.0",
+		"pg": "^8.13.1",
+		"undici": "^7.2.1"
+	},
 	"devDependencies": {
+		"@atcute/client": "^2.0.6",
 		"@biomejs/biome": "^1.9.4",
-		"@cloudflare/workers-types": "^4.20241112.0",
-		"typescript": "^5.6.3",
-		"wrangler": "^3.60.3"
+		"@types/node": "^22.10.5",
+		"tsx": "^4.19.2",
+		"typescript": "^5.6.3"
 	}
 }
