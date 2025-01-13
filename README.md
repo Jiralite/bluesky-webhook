@@ -17,7 +17,7 @@ If successful, the webhook will be executed upon a new post of the DID. In other
 ### Example
 
 ```
-curl "https://serebii-webhook.jiralite.workers.dev" \
+curl "https://bluesky-webhook.jiralite.dev" \
   --request POST \
   --header "Content-Type: application/json" \
   --data '{"id":"1234567890123456789","token":"webhook-token","did":"did:plc:exampletext"}'
