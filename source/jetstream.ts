@@ -10,12 +10,24 @@ import {
 	getCharacterIndexesFromByteOffsets,
 } from "./utility/functions.js";
 
+const LAST_SEEN_POSTS = new Map<string, string>();
+
 async function generateOptions() {
+	const wantedDIDs = (await pg<WebhooksPacket>(DatabaseTable.Webhooks).distinct("did")).map(
+		(row) => row.did,
+	);
+
+	const wantedDIDsSet = new Set(wantedDIDs);
+
+	for (const key of LAST_SEEN_POSTS.keys()) {
+		if (!wantedDIDsSet.has(key)) {
+			LAST_SEEN_POSTS.delete(key);
+		}
+	}
+
 	return {
 		wantedCollections: ["app.bsky.feed.post" as const],
-		wantedDids: (await pg<WebhooksPacket>(DatabaseTable.Webhooks).distinct("did")).map(
-			(row) => row.did,
-		),
+		wantedDids: wantedDIDs,
 	};
 }
 
@@ -27,6 +39,14 @@ jetstream.on(EventType.Commit, async (event) => {
 
 	if (event.commit.operation === CommitType.Create) {
 		const did = event.did;
+
+		// https://github.com/bluesky-social/jetstream#consuming-jetstream
+		if (LAST_SEEN_POSTS.get(did) === event.commit.rkey) {
+			console.log(`Skipping ${did} (duplicate check).`);
+			return;
+		}
+
+		LAST_SEEN_POSTS.set(did, event.commit.rkey);
 
 		// Get all webhooks for this DID.
 		const webhooks = await pg<WebhooksPacket>(DatabaseTable.Webhooks).where({ did });
