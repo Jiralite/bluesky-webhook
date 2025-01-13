@@ -23,7 +23,7 @@ export const jetstream = new Jetstream(await generateOptions());
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: This is fine.
 jetstream.on(EventType.Commit, async (event) => {
-	console.log(JSON.stringify(event, null, 2));
+	console.log(event);
 
 	if (event.commit.operation === CommitType.Create) {
 		const did = event.did;
@@ -118,6 +118,8 @@ jetstream.on(EventType.Commit, async (event) => {
 		await Promise.all(promises);
 	}
 });
+
+jetstream.on("error", console.log);
 
 export async function updateOptions() {
 	jetstream.updateOptions(await generateOptions());
