@@ -3,7 +3,7 @@ import { CommitType, EventType, Jetstream } from "@skyware/jetstream";
 import { discord } from "./discord.js";
 import type { WebhooksPacket } from "./models/webhook.js";
 import pg from "./pg.js";
-import { DatabaseTable } from "./utility/constants.js";
+import { BLUESKY_ICON, DatabaseTable } from "./utility/constants.js";
 import {
 	fetchProfile,
 	formatImageURL,
@@ -112,7 +112,7 @@ jetstream.on(EventType.Commit, async (event) => {
 		};
 
 		if (handle) {
-			initialEmbed.footer = { text: handle };
+			initialEmbed.footer = { icon_url: BLUESKY_ICON, text: handle };
 		}
 
 		const firstURL = embedImages.shift();
