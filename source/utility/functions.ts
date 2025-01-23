@@ -1,31 +1,50 @@
-import type { AppBskyRichtextFacet } from "@atcute/client/lexicons";
+import { AppBskyRichtextFacet, type Facet, RichText } from "@atproto/api";
 
-export function getCharacterIndexesFromByteOffsets(
-	description: string,
-	{ byteStart, byteEnd }: AppBskyRichtextFacet.ByteSlice,
-) {
-	const encoder = new TextEncoder();
-	let currentByteIndex = 0;
-	let startIndex = -1;
-	let endIndex = -1;
-
-	for (let index = 0; index < description.length; index++) {
-		const encodedChar = encoder.encode(description[index]);
-		const charByteLength = encodedChar.length;
-
-		if (currentByteIndex === byteStart) {
-			startIndex = index;
-		}
-
-		if (currentByteIndex + charByteLength >= byteEnd && endIndex === -1) {
-			endIndex = index + 1;
-			break;
-		}
-
-		currentByteIndex += charByteLength;
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: This is fine.
+export function embedLinksInText(text: string, facets: Facet[]): string {
+	if (!facets) {
+		return text;
 	}
 
-	return { startIndex, endIndex };
+	const richText = new RichText({ text, facets });
+	let result = "";
+	let lastIndex = 0;
+	const utf8ToUtf16Map = new Map<number, number>();
+
+	for (let i = 0; i < text.length; i++) {
+		const utf8Index = richText.unicodeText.utf16IndexToUtf8Index(i);
+		utf8ToUtf16Map.set(utf8Index, i);
+	}
+
+	// Sort facets by start index.
+	const sortedFacets = [...(richText.facets ?? [])].sort(
+		(a, b) => a.index.byteStart - b.index.byteStart,
+	);
+
+	for (const facet of sortedFacets) {
+		const startUtf16 = utf8ToUtf16Map.get(facet.index.byteStart) ?? lastIndex;
+		const endUtf16 = utf8ToUtf16Map.get(facet.index.byteEnd) ?? text.length;
+		result += text.slice(lastIndex, startUtf16);
+		const facetText = text.slice(startUtf16, endUtf16);
+		const feature = facet.features[0];
+
+		if (AppBskyRichtextFacet.isLink(feature)) {
+			result += `[${facetText}](${feature.uri})`;
+		} else if (AppBskyRichtextFacet.isMention(feature)) {
+			result += `[@${facetText}](https://bsky.app/profile/${feature.did})`;
+		} else if (AppBskyRichtextFacet.isTag(feature)) {
+			const tagText = facetText.startsWith("#") ? facetText.slice(1) : facetText;
+			result += `[${facetText}](https://bsky.app/search?q=%23${encodeURIComponent(tagText)})`;
+		} else {
+			result += facetText;
+		}
+
+		lastIndex = endUtf16;
+	}
+
+	// Add remaining text after the last facet.
+	result += text.slice(lastIndex);
+	return result;
 }
 
 export function formatImageURL(did: string, id: string) {

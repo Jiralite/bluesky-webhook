@@ -4,11 +4,7 @@ import { discord } from "./discord.js";
 import type { WebhooksPacket } from "./models/webhook.js";
 import pg from "./pg.js";
 import { BLUESKY_ICON, DatabaseTable } from "./utility/constants.js";
-import {
-	fetchProfile,
-	formatImageURL,
-	getCharacterIndexesFromByteOffsets,
-} from "./utility/functions.js";
+import { embedLinksInText, fetchProfile, formatImageURL } from "./utility/functions.js";
 
 const LAST_SEEN_POSTS = new Map<string, string>();
 
@@ -68,28 +64,11 @@ jetstream.on(EventType.Commit, async (event) => {
 		let description = record.text;
 
 		if (record.facets) {
-			const replacements: { startIndex: number; endIndex: number; hyperlink: string }[] = [];
-
-			for (const { features, index } of record.facets) {
-				if (features[0]?.$type !== "app.bsky.richtext.facet#link") {
-					continue;
-				}
-
-				const { startIndex, endIndex } = getCharacterIndexesFromByteOffsets(record.text, index);
-
-				if (startIndex !== -1 && endIndex !== -1) {
-					const hyperlink = `[${record.text.slice(startIndex, endIndex)}](${features[0].uri})`;
-					replacements.push({ startIndex, endIndex, hyperlink });
-				} else {
-					console.error("Could not determine character indexes from byte offsets.");
-				}
-			}
-
-			for (const { startIndex, endIndex, hyperlink } of replacements.sort(
-				(a, b) => b.startIndex - a.startIndex,
-			)) {
-				description = `${description.slice(0, startIndex)}${hyperlink}${description.slice(endIndex)}`;
-			}
+			description = embedLinksInText(
+				description,
+				// @ts-expect-error Type conflict, but it will work.
+				record.facets,
+			);
 		}
 
 		const url = `https://bsky.app/profile/${did}/post/${rkey}`;
