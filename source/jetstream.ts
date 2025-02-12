@@ -34,6 +34,11 @@ jetstream.on(EventType.Commit, async (event) => {
 	console.log(event);
 
 	if (event.commit.operation === CommitType.Create) {
+		if (event.commit.record.reply) {
+			// Ignore replies.
+			return;
+		}
+
 		const did = event.did;
 
 		// https://github.com/bluesky-social/jetstream#consuming-jetstream
