@@ -1,7 +1,8 @@
-import type { APIEmbed } from "@discordjs/core";
+import { type APIEmbed, RESTJSONErrorCodes } from "@discordjs/core";
+import { DiscordAPIError } from "@discordjs/rest";
 import { CommitType, EventType, Jetstream } from "@skyware/jetstream";
 import { discord } from "./discord.js";
-import type { WebhooksPacket } from "./models/webhook.js";
+import { WebhookExecuteError, type WebhooksPacket, deleteWebhook } from "./features/webhooks.js";
 import pg from "./pg.js";
 import { BLUESKY_ICON, DatabaseTable } from "./utility/constants.js";
 import { embedLinksInText, fetchProfile, formatImageURL } from "./utility/functions.js";
@@ -111,15 +112,31 @@ jetstream.on(EventType.Commit, async (event) => {
 			embeds.push({ url, image: { url: embedImage } });
 		}
 
-		const promises = webhooks.map(({ id, token }) =>
-			discord.webhooks.execute(id, token, {
-				username: displayName ?? handle,
-				avatar_url: avatar,
-				embeds,
-			}),
+		const promises = webhooks.map((webhook) =>
+			discord.webhooks
+				.execute(webhook.id, webhook.token, {
+					username: displayName ?? handle,
+					avatar_url: avatar,
+					embeds,
+				})
+				.catch((error) => Promise.reject(new WebhookExecuteError(webhook, error))),
 		);
 
-		await Promise.all(promises);
+		const settled = await Promise.allSettled(promises);
+
+		for (const result of settled) {
+			if (result.status === "rejected") {
+				const reason = result.reason as WebhookExecuteError;
+
+				if (
+					reason.error instanceof DiscordAPIError &&
+					reason.error.code === RESTJSONErrorCodes.UnknownWebhook
+				) {
+					console.info(`Deleting webhook ${reason.webhook.id} as it no longer exists.`);
+					await deleteWebhook({ id: reason.webhook.id, token: reason.webhook.token });
+				}
+			}
+		}
 	}
 });
 
